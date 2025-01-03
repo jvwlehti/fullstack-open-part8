@@ -1,6 +1,5 @@
 import {useQuery} from "@apollo/client";
 import {ALL_AUTHORS} from "../queries";
-import BirthYearForm from "./BirthYearForm.jsx";
 
 const Authors = (props) => {
 
