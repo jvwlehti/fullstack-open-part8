@@ -3,6 +3,7 @@ const { startStandaloneServer } = require('@apollo/server/standalone')
 const { GraphQLError } = require('graphql')
 const mongoose = require('mongoose')
 const Person = require('./models/person')
+const User = require('./models/user')
 const jwt = require('jsonwebtoken')
 require('dotenv').config()
 
@@ -87,17 +88,24 @@ const typeDefs = `
       street: String!
       city: String!
       ): Person
+      
     editNumber(
       name: String!
       phone: String!
       ): Person
-    CreateUser(
+      
+    createUser(
       username: String!
     ): User
+    
     login(
       username: String!
       password: String!
-    ): Token
+    ): Token 
+    
+    addAsFriend(
+     name: String!
+    ): User
   }
 `
 
@@ -112,6 +120,9 @@ const resolvers = {
             return Person.find({ phone: { $exists: args.phone === 'YES'  }})
         },
         findPerson: async (root, args) => Person.findOne({ name: args.name }),
+        me: (root, args, context) => {
+            return context.currentUser
+        }
     },
     Person: {
         address: ({ street, city }) => {
@@ -122,14 +133,24 @@ const resolvers = {
         },
     },
     Mutation: {
-        addPerson: async (root, args) => {
+        addPerson: async (root, args, context) => {
             const person = new Person({ ...args })
+            const currentUser = context.currentUser
 
+            if (!currentUser) {
+                throw new GraphQLError('not authenticated', {
+                    extensions: {
+                        code: 'BAD_USER_INPUT',
+                    }
+                })
+            }
 
             try {
                 await person.save()
+                currentUser.friends = currentUser.friends.concat(person)
+                await currentUser.save()
             } catch (error) {
-                throw new GraphQLError('Saving person failed', {
+                throw new GraphQLError('Saving user failed', {
                     extensions: {
                         code: 'BAD_USER_INPUT',
                         invalidArgs: args.name,
@@ -143,11 +164,10 @@ const resolvers = {
         editNumber: async (root, args) => {
             const person = await Person.findOne({ name: args.name })
             person.phone = args.phone
-
             try {
                 await person.save()
             } catch (error) {
-                throw new GraphQLError('Saving number failed', {
+                throw new GraphQLError('Editing number failed', {
                     extensions: {
                         code: 'BAD_USER_INPUT',
                         invalidArgs: args.name,
@@ -155,7 +175,6 @@ const resolvers = {
                     }
                 })
             }
-
             return person
         },
         createUser: async (root, args) => {
@@ -166,7 +185,7 @@ const resolvers = {
                     throw new GraphQLError('Creating the user failed', {
                         extensions: {
                             code: 'BAD_USER_INPUT',
-                            invalidArgs: args.username,
+                            invalidArgs: args.name,
                             error
                         }
                     })
@@ -177,9 +196,7 @@ const resolvers = {
 
             if ( !user || args.password !== 'secret' ) {
                 throw new GraphQLError('wrong credentials', {
-                    extensions: {
-                        code: 'BAD_USER_INPUT'
-                    }
+                    extensions: { code: 'BAD_USER_INPUT' }
                 })
             }
 
@@ -190,6 +207,27 @@ const resolvers = {
 
             return { value: jwt.sign(userForToken, process.env.JWT_SECRET) }
         },
+
+        addAsFriend: async (root, args, { currentUser }) => {
+            if (!currentUser) {
+                throw new GraphQLError('wrong credentials', {
+                    extensions: { code: 'BAD_USER_INPUT' }
+                })
+            }
+
+            const nonFriendAlready = (person) =>
+                !currentUser.friends.map(f => f._id.toString()).includes(person._id.toString())
+
+            const person = await Person.findOne({ name: args.name })
+            if ( nonFriendAlready(person) ) {
+                currentUser.friends = currentUser.friends.concat(person)
+            }
+
+            await currentUser.save()
+
+            return currentUser
+        },
+
     },
 
 }
@@ -201,6 +239,17 @@ const server = new ApolloServer({
 
 startStandaloneServer(server, {
     listen: { port: 4000 },
+    context: async ({ req, res }) => {
+        const auth = req ? req.headers.authorization : null
+        if (auth && auth.startsWith('Bearer ')) {
+            const decodedToken = jwt.verify(
+                auth.substring(7), process.env.JWT_SECRET
+            )
+            const currentUser = await User
+                .findById(decodedToken.id).populate('friends')
+            return { currentUser }
+        }
+    },
 }).then(({ url }) => {
     console.log(`Server ready at ${url}`)
 })
