@@ -140,17 +140,26 @@ const resolvers = {
     Query: {
         bookCount: async () => Book.collection.countDocuments(),
         authorCount: async () => Author.collection.countDocuments(),
-        allBooks: (root, args) => {
-            return books.filter(book => {
-                const matchesAuthor = args.author ? book.author === args.author : true;
-                const matchesGenre = args.genre ? book.genres.includes(args.genre) : true;
-                return matchesAuthor && matchesGenre;
-            });
+        allBooks: async (root, args) => {
+            const author = await Author.findOne({ name: args.author })
+
+            const filters = [];
+
+            if (args.author) {
+                filters.push({ author: author.id });
+            }
+
+            if (args.genre) {
+                filters.push({ genres: { $in: [args.genre] } });
+            }
+
+            const query = filters.length > 0 ? { $and: filters } : {};
+            return Book.find(query).populate("author");
         },
-        allAuthors: () => authors,
+        allAuthors: async () => Author.find({}),
     },
     Author: {
-        bookCount: (root) => books.filter(book => book.author === root.name).length,
+        bookCount: async (root) => Book.find({author: root.id}).countDocuments(),
     },
     Mutation: {
         addBook: async (root, args) => {
@@ -168,15 +177,19 @@ const resolvers = {
                 console.error(e.message)
             }
         },
-        editAuthor: (root, args) => {
-            const author = authors.find(author => author.name === args.name)
-            if (!author) {
-                return null
+        editAuthor: async (root, args) => {
+            const author = await Author.findOne({ name: args.name});
+
+            if (author) {
+                author.born = args.setBornTo;
             }
 
-            const updatedAuthor = {...author, born: args.setBornTo }
-            authors = authors.map(author => author.name === args.name ? updatedAuthor : author)
-            return updatedAuthor
+            try {
+                await author.save();
+            } catch (error) {
+                console.error(error.message)
+            }
+            return author
         }
     }
 }
