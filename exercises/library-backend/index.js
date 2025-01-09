@@ -173,13 +173,29 @@ const resolvers = {
                 await book.save();
 
                 return book;
-            } catch (e) {
-                console.error(e.message)
+            } catch (err) {
+                let errorMessage = "Saving book failed";
+
+                if (err instanceof mongoose.Error.ValidationError) {
+                    const { name, title } = err.errors;
+
+                    if (name) {
+                        errorMessage = "Saving book failed. Author name is not valid.";
+                    } else if (title) {
+                        errorMessage = "Saving book failed. Book title is not valid.";
+                    }
+
+                    throw new GraphQLError(errorMessage, {
+                        extensions: { code: "BAD_USER_INPUT" },
+                    });
+
+                } else {
+                    throw new GraphQLError(`Unexpected error: ${err.message}`);
+                }
             }
         },
         editAuthor: async (root, args) => {
             const author = await Author.findOne({ name: args.name});
-
             if (author) {
                 author.born = args.setBornTo;
             }
@@ -187,7 +203,13 @@ const resolvers = {
             try {
                 await author.save();
             } catch (error) {
-                console.error(error.message)
+                throw new GraphQLError('Update author failed', {
+                    extensions: {
+                        code: "BAD_USER_INPUT",
+                        invalidArgs: args.author,
+                        error
+                    },
+                })
             }
             return author
         }
