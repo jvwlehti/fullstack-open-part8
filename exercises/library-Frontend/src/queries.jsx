@@ -55,6 +55,16 @@ export const LOGIN = gql`
     }
 `
 export const ALL_GENRES = gql`
-query allGenres {
-    allGenres
-}`
+    query allGenres {
+        allGenres
+    }
+`
+
+export const ME = gql`
+    query Me {
+        me {
+            username
+            favoriteGenre
+        }
+    }
+`
