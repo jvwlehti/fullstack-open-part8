@@ -6,6 +6,7 @@ import { useState } from "react";
 const Books = ({ show }) => {
     const [selectedGenre, setSelectedGenre] = useState(null);
 
+    // ex_8.21 - already done using backend
     const { data: booksData, loading: booksLoading } = useQuery(ALL_BOOKS, {
         variables: { genre: selectedGenre },
     });
