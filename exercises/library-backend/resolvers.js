@@ -1,7 +1,12 @@
 const Book = require("./models/book");
 const Author = require("./models/author");
+
+const { PubSub } = require('graphql-subscriptions')
+const pubsub = new PubSub();
+
 const { GraphQLError } = require("graphql/index");
 const mongoose = require("mongoose");
+
 const User = require("./models/user");
 const jwt = require("jsonwebtoken");
 
@@ -66,6 +71,8 @@ const resolvers = {
 
                 const book = new Book({ ...args, author });
                 await book.save();
+
+                await pubsub.publish('BOOK_ADDED', {bookAdded: book})
 
                 return book;
             } catch (err) {
@@ -148,7 +155,13 @@ const resolvers = {
 
             return { value: jwt.sign(userForToken, process.env.JWT_SECRET) }
         },
-    }
+    },
+    Subscription: {
+        bookAdded: {
+            subscribe: () =>
+                pubsub.asyncIterableIterator('BOOK_ADDED')
+        },
+    },
 }
 
 module.exports = resolvers;
